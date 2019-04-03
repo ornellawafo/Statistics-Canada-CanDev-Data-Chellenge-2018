@@ -1,0 +1,127 @@
+
+library(shiny)
+library(CANSIM2R)
+library(dplyr)
+library(ggplot2)
+library(ggformula)
+library(plotly)
+library(shinyWidgets)
+library(kableExtra)
+
+
+ISTFM.T1 <-
+  read.csv(
+    "https://www.canada.ca/content/dam/cra-arc/prog-policy/stats/istfm-smpmd/2015/tbl1-eng.csv"
+  ) # economic characteristics
+# Cleaning the data:
+ISTFM.T1.shiny <- ISTFM.T1 %>%
+  select(
+    "Area" = "CMA_or_CA",
+    "Major.Income.Source" = "Major_Source_of_Income",
+    "Total.Income.Range" = "Total_Income_Range" ,
+    "Complexity" = "Complexity",
+    "Count.of.Taxfilers" = "Count_of_Taxfilers",
+    "Filing.Method" = "Filing_Method"
+  )
+
+
+ISTFM.T1.shiny$Count.of.Taxfilers <-as.numeric(gsub(",", "", ISTFM.T1.shiny$Count.of.Taxfilers))
+#  is.numeric(ISTFM.T1.shiny$Count.of.Taxfilers)
+
+# Define UI for app that draws a histogram ----
+ui <- shinyUI(fluidPage(
+  setBackgroundColor(
+    color = c("#F7FBFF", "#2171B5"),
+    gradient = "linear",
+    direction = "bottom"
+  ),
+  
+  # App title ----
+  titlePanel("Tax Information/Distribution"),
+  
+  # Sidebar layout with input and output definitions ----
+  sidebarLayout(
+    
+    # Sidebar panel for inputs ----
+    sidebarPanel(
+      
+      # Input: Slider for the number of bins ----
+      selectInput(inputId = "area",
+                  label = "Select a Metropolitan Area:",
+                  choices = unique(ISTFM.T1.shiny$Area), multiple= TRUE, selected=c("Ottawa-Gatineau CMA(QC)", "Montreal CMA")), #
+      
+      selectInput(inputId = "income.source",
+                  label = "Select the Primary Income Source:",
+                  choices = unique(ISTFM.T1.shiny$Major.Income.Source), multiple= TRUE, selected="Employment"), #
+      
+      radioButtons(inputId = "income.bracket",
+                   label = "Select an Income Bracket:",
+                   choices = unique(ISTFM.T1.shiny$Total.Income.Range)),
+      
+      radioButtons(inputId = "complexity",
+                   label = "Complexity of the Filing Process:",
+                   choices = unique(ISTFM.T1.shiny$Complexity)),
+      
+      radioButtons(inputId = "method",
+                   label = "Select a Filing Method:",
+                   choices = unique(ISTFM.T1.shiny$Filing.Method))
+    ),
+    
+    # Main panel for displaying outputs ----
+    mainPanel(  
+      tabsetPanel(
+        
+        # Output: Histogram ----
+        tabPanel("Visualisation", plotlyOutput("plot1", height = "800px", width = "1000px")),
+        tabPanel("Table", dataTableOutput("table")),
+        tabPanel("Summary", verbatimTextOutput("summary") ))
+        # plotOutput(outputId = "plot2", height = "800px", width = "700px")
+        
+        
+      )
+    )
+  )
+)
+
+# Define server logic 
+server <- function(input, output) {
+  
+  output$plot1 <- renderPlotly({
+    
+    dat <- ISTFM.T1.shiny %>%
+      filter(Area %in% input$area ) %>%
+      filter(Total.Income.Range %in% input$income.bracket)%>%
+      filter(Major.Income.Source%in% input$income.source)   %>%  
+      filter(Complexity %in% input$complexity)%>%
+      filter(Filing.Method%in% input$method)
+    
+    
+    
+    ggplot(dat,aes(x= Area , y= Count.of.Taxfilers, fill= Major.Income.Source), show.legend=T)+
+      
+      geom_bar(stat="identity", position=position_dodge())+
+      theme(axis.text.x = element_text(color="#993333",
+                                       size=11, angle=45))+
+      labs(
+        title = "Distribution of Taxfilers",
+        subtitle = "Per Metropolitan Region, Filing Method, Employment Category",
+        fill = "Income Source:",
+        x = "Metropolitan Area",
+        y = "# Tax Filers")+
+      scale_linetype_identity()
+    
+  })
+  
+  output$table <- renderDataTable(ISTFM.T1);
+  output$summary <- renderPrint({
+    
+    kable(summary(ISTFM.T1), longtable=T, booktabs=T) %>%
+      kable_styling(latex_options=c("repeat_header"))
+  
+    
+    })   
+  
+}
+
+# Create Shiny app ----
+shinyApp(ui = ui, server = server)
